@@ -1,0 +1,136 @@
+/* ============================================================
+ *
+ * This file is a part of kipi-plugins project
+ * http://www.digikam.org
+ *
+ * Date        : 2013-08-31
+ * Description : a plugin to blend bracketed images.
+ *
+ * Copyright (C) 2013 by Soumajyoti Sarkar <ergy dot ergy at gmail dot com>
+ *
+ * This program is free software; you can redistribute it
+ * and/or modify it under the terms of the GNU General
+ * Public License as published by the Free Software Foundation;
+ * either version 2, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * ============================================================ */
+
+#include "hdrcalibratetask.h"
+
+// Qt includes
+
+#include <QFileInfo>
+#include <QFile>
+#include <QCoreApplication>
+#include <QTextStream>
+#include <QDebug>
+
+// KDE includes
+
+#include <klocale.h>
+#include <kdebug.h>
+#include <klocale.h>
+#include <kstandarddirs.h>
+#include <kdebug.h>
+#include <ktempdir.h>
+// Local includes
+
+#include "kpmetadata.h"
+#include "kpversion.h"
+#include "kpwriteimage.h"
+
+using namespace KIPIPlugins;
+
+namespace KIPIExpoBlendingPlugin
+{
+
+HdrCalibrateTask::HdrCalibrateTask(QObject* const parent, const KUrl::List& inUrls,const QString& dirName,const QString& outputUrl)
+    : Task(parent, HDRCALIBRATEPREVIEW, inUrls), urls(inUrls), name(dirName), destUrl(outputUrl)
+{}
+
+HdrCalibrateTask::HdrCalibrateTask(const KUrl::List& inUrls, const QString& dirName, const QString& outputUrl)
+    : Task(0, HDRCALIBRATEPREVIEW, inUrls), urls(inUrls), (dirName), destUrl(outputUrl)
+{}
+
+HdrCalibrateTask::~HdrCalibrateTask()
+{}
+
+void HdrCalibrateTask::run()
+{   
+    QString errors;
+    const QString outUrl = destUrl;
+    bool result = startpfsHdrCalibrate(name, errors, outUrl);
+ 
+    // preserve exif information for auto rotation
+    if (result)
+    {
+	KPMetadata metaIn(urls[0].toLocalFile());
+        KPMetadata metaOut(outUrl.toLocalFile());
+        metaOut.setImageOrientation(metaIn.getImageOrientation());
+        metaOut.applyChanges();
+    }
+    
+    return ; 
+}
+
+bool HdrCalibrateTask::startpfsHdrCalibrate(const QString& name, QString& errors,const QString& exroutput)
+{
+    
+    KUrl exifTags = KUrl(name + QString("exifTags.hdrgen"));
+    KUrl cameraResponse= KUrl(name + QString("camera.response"));
+    KUrl exrout = KUrl(name + QString("sample.exr"));
+    
+    qDebug() << name + "sample.exr";
+    QStringList pfsinhdrgenArgs;
+    QStringList pfshdrcalibrateArgs;
+    QStringList pfsoutexrArgs;
+    
+    pfsinhdrgenProcess = new QProcess();
+    pfshdrcalibrateProcess = new QProcess();
+    pfsoutexrProcess = new QProcess();
+    
+    pfsinhdrgenArgs << exifTags.toLocalFile();
+    
+    pfshdrcalibrateArgs << "-v";
+    pfshdrcalibrateArgs << "-f";
+    pfshdrcalibrateArgs << cameraResponse.toLocalFile();
+    
+    pfsoutexrArgs << exrout.toLocalFile();
+    
+    pfsinhdrgenProcess->setWorkingDirectory(name);
+    pfshdrcalibrateProcess->setWorkingDirectory(name);
+    
+    pfsinhdrgenProcess->setStandardOutputProcess(pfshdrcalibrateProcess); 
+    pfshdrcalibrateProcess->setStandardOutputProcess(pfsoutexrProcess);
+
+    pfsinhdrgenProcess->start("pfsinhdrgen", pfsinhdrgenArgs);
+    pfshdrcalibrateProcess->start("pfshdrcalibrate", pfshdrcalibrateArgs); 
+    pfsoutexrProcess->start("pfsoutexr", pfsoutexrArgs);
+
+    if (!pfsoutexrProcess->waitForFinished(-1))
+    {
+        successFlag = false;  
+        //errors = getProcessError(pfsoutexrProcess);
+        return 0;
+    }
+    pfsinhdrgenProcess->close();
+    pfshdrcalibrateProcess->close();
+    pfsoutexrProcess->close();
+    
+    return 1;
+}
+
+/*QString HdrCalibrateTask::getProcessError(QProcess* const proc) const
+{
+    if (!proc) return QString();
+
+    QString std = proc->readAll();
+    return (i18n("Cannot run %1:\n\n %2", proc->program()[0], std));
+}*/
+
+} // namespace KIPIExpoBlendingPlugin
