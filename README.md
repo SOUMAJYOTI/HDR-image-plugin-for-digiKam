@@ -15,3 +15,5 @@ plugin path and build the entire digiKam package.
 A more detailed description is given here: http://www.digikam.org/contrib
 
 For any issues regarding the plugin, please feel free to contact me.
+
+Overview: https://community.kde.org/GSoC/2013/StatusReports#Soumajyoti_Sarkar
